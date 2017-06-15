@@ -1,5 +1,5 @@
-#define COUNT_SIGNALS 2
-#define COUNT_STORE 2
+#define COUNT_SIGNALS 3
+#define COUNT_STORE 3
 #include "Types.h"
 #include "MgtClient.h"
 
@@ -14,7 +14,8 @@
 #define PIN_BUTTON   0
 #define PIN_RELAY    12
 #define PIN_LED_MODE 13
-#define PIN_ONEWIRE  14
+#define PIN_ONEWIRE_1  14
+#define PIN_ONEWIRE_2  4
 
 
 const char* WIFI_SSID = EC_Config.ssid;
@@ -39,6 +40,7 @@ void debugLog(const __FlashStringHelper* aFormat, ...) {
 
 static struct Signal* s1; // relay
 static struct Signal* s2; // temperature
+static struct Signal* s3; // temperature-2
 
 static struct MgtClient client;
 
@@ -107,67 +109,68 @@ void setup() {
 		while(1);
 
 	s1 = mgt_createSignal(&client, "relay", tpBool, SEC_LEV_READ | SIG_ACCESS_READ | SIG_ACCESS_WRITE, STORE_MODE_CHANGE | STORE_UNIT_MIN | 1, 0);
-	s2 = mgt_createSignal(&client, "temperature", tpFloat, SEC_LEV_READ | SIG_ACCESS_READ, STORE_MODE_AVERAGE | STORE_UNIT_SEC | 15, 0);
+  s2 = mgt_createSignal(&client, "temperature", tpFloat, SEC_LEV_READ | SIG_ACCESS_READ, STORE_MODE_AVERAGE | STORE_UNIT_SEC | 15, 0);
+  s3 = mgt_createSignal(&client, "temperature-2", tpFloat, SEC_LEV_READ | SIG_ACCESS_READ, STORE_MODE_AVERAGE | STORE_UNIT_SEC | 15, 0);
 
 	mgt_start(&client);
 }
 
 
-bool sensorOnline = false;
-float sensor;
-
+class SensorTemperature {
+  TimeStamp convertTime;
+  bool isFind;
+  byte rom[8];
+  OneWire oneWire;
+public:
+  bool online;
+  float value;
+  SensorTemperature(int aPin) : oneWire(OneWire(aPin)), convertTime(0), online(false), isFind(false)  { }
 // Не блокирующая функция чтения датчика 
 // если возращается false, то датчик не получил нового значения
 // если возращается true, то датчик получил новое значение
-bool run_ds(TimeStamp time)
-{
-  static TimeStamp convertTime = 0;
-  static bool isFind = false;
-  static byte rom[8];
-  static OneWire oneWire(14);
+  bool run(TimeStamp time) {
+    if ((time - convertTime) < 800)
+      return false; // ещё не готовы читать датчики
 
-  if ((time - convertTime) < 800)
-    return false; // ещё не готовы читать датчики
-
-  // вычитаем значения датчиков
-  if (isFind) { // если датчик уже найден
-    oneWire.reset();
-    oneWire.select(rom);
-    oneWire.write(0xBE);
-    byte ram[9];
-    for (byte k = 0; k < 9; k++) {
-      ram[k] = oneWire.read();
-    }
-    if (OneWire::crc8(ram, 8) == ram[8]) { // если crc верно
-      sensorOnline = true; 
-      int divider = 0;      
-      if (rom[0] == 0x10) // если это 18S20
-        divider = 2;
-      else if (rom[0] == 0x28) // если это 18B20
-        divider = 16;
+    // вычитаем значения датчиков
+    if (isFind) { // если датчик уже найден
+      oneWire.reset();
+      oneWire.select(rom);
+      oneWire.write(0xBE);
+      byte ram[9];
+      for (byte k = 0; k < 9; k++) {
+        ram[k] = oneWire.read();
+      }
+      if (OneWire::crc8(ram, 8) == ram[8]) { // если crc верно
+        online = true; 
+        int divider = 0;      
+        if (rom[0] == 0x10) // если это 18S20
+          divider = 2;
+        else if (rom[0] == 0x28) // если это 18B20
+          divider = 16;
+        else
+          Serial.print("Sensor is error type.");
+        float temp = (ram[1] << 8) + ram[0];
+        value = temp / divider;
+      }
       else
-        Serial.print("Sensor is error type.");
-      float temp = (ram[1] << 8) + ram[0];
-      sensor = temp / divider;
+        online = false;
+  
+      // запустим процесс измерения
+      oneWire.reset();
+      oneWire.select(rom);
+      oneWire.write(0x44, 1);
+      convertTime = getUTCTime();
+      return online; 
     }
-    else
-      sensorOnline = false;
-
-    // запустим процесс измерения
-    oneWire.reset();
-    oneWire.select(rom);
-    oneWire.write(0x44, 1);
-    convertTime = getUTCTime();
-    return sensorOnline; 
-  }
-  else {
     if (!oneWire.search(rom)) {
-      if (OneWire::crc8(rom, 7) == rom[7]) // если crc не сходится
+      if (OneWire::crc8(rom, 7) == rom[7]) // если crc сходится
         isFind = true; // датчик обнаружен
     }
     return false;       
-  }  
-}
+
+  }
+};
 
 
 void loop() {
@@ -231,10 +234,19 @@ void loop() {
         mgt_send(&client, s1); 
       }
 
-      if (run_ds(t)) {
-        signal_update_double(s2, sensor, t);
+      static SensorTemperature sensor1(PIN_ONEWIRE_1);
+      static SensorTemperature sensor2(PIN_ONEWIRE_2);
+
+      if (sensor1.run(t)) {
+        signal_update_double(s2, sensor1.value, t);
         mgt_send(&client, s2);
-      } 
+      }
+      
+      if (sensor2.run(t)) {
+        signal_update_double(s3, sensor2.value, t);
+        mgt_send(&client, s3);
+      }
+      
   	}
   }
   
