@@ -34,6 +34,7 @@ void sleepms(__uint32 aMilliseconds) {
 static bool socket_open(const char* aHost, __uint16 aPort) {
 	debugLog(F("socket open\n"));
 	if (WiFi.status() != WL_CONNECTED) {
+		return false;
 		WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 		while (WiFi.status() != WL_CONNECTED) {
 			delay(500);
