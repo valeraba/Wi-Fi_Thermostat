@@ -163,7 +163,7 @@ class SensorTemperature {
         convertTime = getUTCTime();
         return online;
       }
-      if (!oneWire.search(rom)) {
+      if (oneWire.search(rom)) {
         if (OneWire::crc8(rom, 7) == rom[7]) // если crc сходится
           isFind = true; // датчик обнаружен
       }
