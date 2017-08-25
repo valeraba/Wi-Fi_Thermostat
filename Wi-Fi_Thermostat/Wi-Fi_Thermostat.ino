@@ -164,8 +164,14 @@ class SensorTemperature {
         return online;
       }
       if (oneWire.search(rom)) {
-        if (OneWire::crc8(rom, 7) == rom[7]) // если crc сходится
+        if (OneWire::crc8(rom, 7) == rom[7]) { // если crc сходится
           isFind = true; // датчик обнаружен
+          // запустим процесс измерения
+          oneWire.reset();
+          oneWire.select(rom);
+          oneWire.write(0x44, 1);
+          convertTime = getUTCTime();
+        }
       }
       return false;
 
