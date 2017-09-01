@@ -10,6 +10,7 @@
 #include "WC_HTTP.h"
 #include "sav_button.h"
 #include <OneWire.h>
+#include <Ticker.h>
 
 #define PIN_BUTTON   0
 #define PIN_RELAY    12
@@ -23,6 +24,7 @@ const char* WIFI_PASSWORD = EC_Config.pass;
 
 extern struct PortableSocket mySocket;
 
+Ticker ticker;
 
 bool relay_on = false;
 uint8_t blink_mode = 0B00000101;
@@ -92,10 +94,27 @@ static void handler(enum OpCode aOpCode, struct Signal* aSignal, struct SignalVa
     case opWrite:
       if (aSignal == s1)
         write_s1(aWriteValue->u.m_bool);
+      else if (aSignal == s4)
+        write_s4(aWriteValue->u.m_float);
+      else if (aSignal == s5)
+        write_s5(aWriteValue->u.m_float);
+      else if (aSignal == s6)
+        write_s6(aWriteValue->u.m_bool);
       break;
     case opWriteAsync:
       break;
   }
+}
+
+// Событие срабатывающее каждые 125 мс
+void tick() {
+  static uint8_t blink_loop = 0;
+  // Режим светодиода ищем по битовой маске
+  if (blink_mode & 1 << (blink_loop & 0x07))
+    digitalWrite(PIN_LED_MODE, LOW);
+  else
+    digitalWrite(PIN_LED_MODE, HIGH);
+  blink_loop++;
 }
 
 void setup() {
@@ -150,6 +169,8 @@ void setup() {
   signal_update_int(s6, EC_Config.isAutoMode, 0);
 
   mgt_start(&client);
+
+  ticker.attach_ms(125, tick);
 }
 
 
@@ -231,8 +252,8 @@ static bool periodEvent(struct Period* aPeriod, TimeStamp aTime) {
 
 struct Period _1_min = { 1L * 60 * 1000, 0 };
 
+
 void loop() {
-  static uint8_t blink_loop = 0;
   static uint32_t ms1 = 0;
   static uint32_t ms2 = 0;
   static uint32_t ms3 = 0;
@@ -249,19 +270,6 @@ void loop() {
       WiFi_begin();
       break;
   }
-
-
-  // Событие срабатывающее каждые 125 мс
-  if ((ms - ms1) > 125 || ms < ms1) {
-    ms1 = ms;
-    // Режим светодиода ищем по битовой маске
-    if (blink_mode & 1 << (blink_loop & 0x07))
-      digitalWrite(PIN_LED_MODE, LOW);
-    else
-      digitalWrite(PIN_LED_MODE, HIGH);
-    blink_loop++;
-  }
-
 
   if (ms < ms2 || (ms - ms2) > 500) {
     ms2 = ms;
@@ -300,14 +308,14 @@ void loop() {
         relay = true;
         digitalWrite(PIN_RELAY, true);
       }
-      else if ((sensor1.value > EC_Config.maxTemperature) && (relay)) {
+      else if ((sensor1.value > EC_Config.maxTemperature) && relay) {
         relay = false;
         digitalWrite(PIN_RELAY, false);
       }
     }
   }
   else { // если датчик не на связи
-    if (relay) {
+    if ((EC_Config.isAutoMode) && relay && (!sensor1.online)) { // если датчик не на связи
       relay = false;
       digitalWrite(PIN_RELAY, false);
     }
