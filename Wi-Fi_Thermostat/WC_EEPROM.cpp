@@ -31,27 +31,31 @@ uint16_t EC_crc(void){
 
 // Устанавливаем значения конфигурации по-умолчанию
 void EC_default(void){
-   memset( &EC_Config, 0, sizeof(EC_Config));
-   
-   strcpy(EC_Config.name, "Sonoff TH10/TH16");
-   strcpy(EC_Config.password, "");
-   strcpy(EC_Config.ssid, "none");
-   strcpy(EC_Config.pass, "");
-   EC_Config.ip[0] = 192;   
-   EC_Config.ip[1] = 168;   
-   EC_Config.ip[2] = 1;     
-   EC_Config.ip[3] = 4;
-   EC_Config.msk[0] = 255; 
-   EC_Config.msk[1] = 255; 
-   EC_Config.msk[2] = 255; 
-   EC_Config.msk[3] = 0;
-   EC_Config.gw[0] = 192;   
-   EC_Config.gw[1] = 168;   
-   EC_Config.gw[2] = 1;     
-   EC_Config.gw[3] = 1;
-   strcpy(EC_Config.mgt, "mgt24.ru");
-   EC_Config.deviceId = 0xffffffff;
-   strcpy(EC_Config.key, "");
+  memset( &EC_Config, 0, sizeof(EC_Config));
+  
+  strcpy(EC_Config.name, "Sonoff TH10/TH16");
+  strcpy(EC_Config.password, "");
+  strcpy(EC_Config.ssid, "none");
+  strcpy(EC_Config.pass, "");
+  EC_Config.ip[0] = 192;   
+  EC_Config.ip[1] = 168;   
+  EC_Config.ip[2] = 1;     
+  EC_Config.ip[3] = 4;
+  EC_Config.msk[0] = 255; 
+  EC_Config.msk[1] = 255; 
+  EC_Config.msk[2] = 255; 
+  EC_Config.msk[3] = 0;
+  EC_Config.gw[0] = 192;   
+  EC_Config.gw[1] = 168;   
+  EC_Config.gw[2] = 1;     
+  EC_Config.gw[3] = 1;
+  strcpy(EC_Config.mgt, "mgt24.ru");
+  EC_Config.deviceId = 0xffffffff;
+  strcpy(EC_Config.key, "");
+
+  EC_Config.isAutoMode = false;
+  EC_Config.minTemperature = 18;
+  EC_Config.maxTemperature = 21;   
 }
 
 // Сохраняем значение конфигурации в EEPROM

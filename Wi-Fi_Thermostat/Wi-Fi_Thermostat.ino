@@ -1,4 +1,4 @@
-#define COUNT_SIGNALS 3
+#define COUNT_SIGNALS 6
 #define COUNT_STORE 3
 #include "Types.h"
 #include "MgtClient.h"
@@ -41,6 +41,9 @@ void debugLog(const __FlashStringHelper* aFormat, ...) {
 static struct Signal* s1; // relay
 static struct Signal* s2; // temperature
 static struct Signal* s3; // temperature-2
+static struct Signal* s4; // min_temperature
+static struct Signal* s5; // max_temperature
+static struct Signal* s6; // isAutoMode
 
 static struct MgtClient client;
 
@@ -52,6 +55,32 @@ static void write_s1(bool aValue) {
   signal_update_int(s1, aValue, getUTCTime());
   mgt_writeAns(&client, s1, erOk); // confirmation
   debugLog(F("write s1: %i\n"), aValue);
+}
+
+// write with confirmation for "min_temperature"
+static void write_s4(float aValue) {
+  EC_Config.minTemperature = aValue;
+  EC_save();
+  signal_update_double(s4, aValue, getUTCTime());
+  mgt_writeAns(&client, s4, erOk); // confirmation
+
+}
+
+// write with confirmation for "max_temperature"
+static void write_s5(float aValue) {
+  EC_Config.maxTemperature = aValue;
+  EC_save();
+  signal_update_double(s5, aValue, getUTCTime());
+  mgt_writeAns(&client, s5, erOk); // confirmation
+
+}
+
+// write with confirmation for "isAutoMode"
+static void write_s6(bool aValue) {
+  EC_Config.isAutoMode = aValue;
+  EC_save();
+  signal_update_int(s6, aValue, getUTCTime());
+  mgt_writeAns(&client, s6, erOk); // confirmation
 }
 
 static void handler(enum OpCode aOpCode, struct Signal* aSignal, struct SignalValue* aWriteValue) {
@@ -111,6 +140,14 @@ void setup() {
   s1 = mgt_createSignal(&client, "relay", tpBool, SEC_LEV_READ | SIG_ACCESS_READ | SIG_ACCESS_WRITE, STORE_MODE_CHANGE | STORE_UNIT_MIN | 1, 0);
   s2 = mgt_createSignal(&client, "temperature", tpFloat, SEC_LEV_READ | SIG_ACCESS_READ, STORE_MODE_AVERAGE | STORE_UNIT_SEC | 15, 0);
   s3 = mgt_createSignal(&client, "temperature-2", tpFloat, SEC_LEV_READ | SIG_ACCESS_READ, STORE_MODE_AVERAGE | STORE_UNIT_SEC | 15, 0);
+  s4 = mgt_createSignal(&client, "min_temperature", tpFloat, SEC_LEV_READ | SIG_ACCESS_READ | SIG_ACCESS_WRITE, STORE_MODE_OFF, 0);
+  s5 = mgt_createSignal(&client, "max_temperature", tpFloat, SEC_LEV_READ | SIG_ACCESS_READ | SIG_ACCESS_WRITE, STORE_MODE_OFF, 0);
+  s6 = mgt_createSignal(&client, "isAutoMode", tpBool, SEC_LEV_READ | SIG_ACCESS_READ | SIG_ACCESS_WRITE, STORE_MODE_OFF, 0);
+
+
+  signal_update_double(s4, EC_Config.minTemperature, 0);
+  signal_update_double(s5, EC_Config.maxTemperature, 0);
+  signal_update_int(s6, EC_Config.isAutoMode, 0);
 
   mgt_start(&client);
 }
@@ -245,11 +282,44 @@ void loop() {
   }
 
   HTTP_loop();
+
+  static SensorTemperature sensor1(PIN_ONEWIRE_1);
+  static SensorTemperature sensor2(PIN_ONEWIRE_2);
+
+  bool relay = digitalRead(PIN_RELAY);
+
+  bool isTemp_1 = false;
+  bool isTemp_2 = false;
+
+  TimeStamp t = getUTCTime();
+
+  if (sensor1.run(t)) {     
+    isTemp_1 = true;
+    if (EC_Config.isAutoMode) {
+      if ((sensor1.value < EC_Config.minTemperature) && (!relay)) {
+        relay = true;
+        digitalWrite(PIN_RELAY, true);
+      }
+      else if ((sensor1.value > EC_Config.maxTemperature) && (relay)) {
+        relay = false;
+        digitalWrite(PIN_RELAY, false);
+      }
+    }
+  }
+  else { // если датчик не на связи
+    if (relay) {
+      relay = false;
+      digitalWrite(PIN_RELAY, false);
+    }
+  }
+
+  if (sensor2.run(t))
+    isTemp_2 = true;
+
+  
   if (!isAP) {
     if (mgt_run(&client) == stConnected) {
-      TimeStamp t = getUTCTime();
 
-      bool relay = digitalRead(PIN_RELAY);
       if (periodEvent(&_1_min, t)) {
         signal_update_int(s1, relay, t);
         mgt_send(&client, s1);
@@ -261,15 +331,12 @@ void loop() {
         }
       }
 
-      static SensorTemperature sensor1(PIN_ONEWIRE_1);
-      static SensorTemperature sensor2(PIN_ONEWIRE_2);
-
-      if (sensor1.run(t)) {
+      if (isTemp_1) {     
         signal_update_double(s2, sensor1.value, t);
         mgt_send(&client, s2);
       }
-
-      if (sensor2.run(t)) {
+    
+      if (isTemp_2) {
         signal_update_double(s3, sensor2.value, t);
         mgt_send(&client, s3);
       }

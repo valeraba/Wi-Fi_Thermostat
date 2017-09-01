@@ -28,6 +28,10 @@ struct WC_Config{
    uint32_t deviceId;
 // Ключ авторизации
    char key[32];
+// режим работы
+  bool isAutoMode;
+  float minTemperature;
+  float maxTemperature;   
 // Контрольная сумма   
    uint16_t crc;   
 };
